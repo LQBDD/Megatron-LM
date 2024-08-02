@@ -46,10 +46,10 @@ class Router(ABC, MegatronModule):
         self.weight = torch.nn.Parameter(
             torch.empty((self.config.num_moe_experts, self.config.hidden_size))
         )
-        if config.perform_initialization:
-            if get_cuda_rng_tracker().is_initialized():
-                with get_cuda_rng_tracker().fork(get_data_parallel_rng_tracker_name()):
-                    config.init_method(self.weight)
+        
+        if get_cuda_rng_tracker().is_initialized():
+            with get_cuda_rng_tracker().fork(get_data_parallel_rng_tracker_name()):
+                config.init_method(self.weight)
         else:
             config.init_method(self.weight)
         setattr(self.weight, 'sequence_parallel', config.sequence_parallel)
@@ -157,7 +157,6 @@ class TopKRouter(Router):
             capacity_factor=self.config.moe_expert_capacity_factor,
             pad_to_capacity=self.config.moe_pad_expert_input_to_capacity,
             drop_policy=self.config.moe_token_drop_policy,
-            use_pre_softmax=self.config.moe_router_pre_softmax,
         )
 
         if self.training:
@@ -270,7 +269,8 @@ class TopKRouter(Router):
 
         if (
             parallel_state.get_tensor_model_parallel_world_size() > 1
-            and self.config.moe_token_dispatcher_type == "alltoall"
+            and (self.config.moe_token_dispatcher_type == "alltoall" or
+            self.config.moe_token_dispatcher_type == "lshalltoall")
         ):
             # Gather the logits from the TP region
             logits = gather_from_sequence_parallel_region(logits)
@@ -287,7 +287,6 @@ class TopKRouter(Router):
                 capacity_factor=self.config.moe_expert_capacity_factor,
                 pad_to_capacity=self.config.moe_pad_expert_input_to_capacity,
                 drop_policy=self.config.moe_token_drop_policy,
-                use_pre_softmax=self.config.moe_router_pre_softmax,
             )
         else:
             raise ValueError(f"Unsupported MoE routing type: {self.routing_type}")
@@ -311,3 +310,4 @@ class TopKRouter(Router):
         scores, indices = self.routing(logits)
 
         return scores, indices
+

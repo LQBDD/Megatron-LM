@@ -12,6 +12,7 @@ from megatron.core.transformer.moe.router import TopKRouter
 from megatron.core.transformer.moe.token_dispatcher import (
     MoEAllGatherTokenDispatcher,
     MoEAlltoAllTokenDispatcher,
+    LSHMoEAlltoAllTokenDispatcher,
 )
 from megatron.core.transformer.transformer_config import TransformerConfig
 
@@ -86,6 +87,10 @@ class MoELayer(BaseMoELayer):
             self.token_dispatcher = MoEAlltoAllTokenDispatcher(
                 self.num_local_experts, self.local_expert_indices, config=self.config
             )
+        elif config.moe_token_dispatcher_type == "lshalltoall":
+            self.token_dispatcher = LSHMoEAlltoAllTokenDispatcher(
+                self.num_local_experts, self.local_expert_indices, config=self.config
+            )
         else:
             raise ValueError(
                 f"Unsupported token dispatcher type: {config.moe_token_dispatcher_type}"
@@ -106,10 +111,20 @@ class MoELayer(BaseMoELayer):
         # process MoE
         def custom_forward(hidden_states):
             probs, indices = self.router(hidden_states)
+            string = f"hidden_states_{torch.distributed.get_rank()}.pt"
+            #torch.save(hidden_states, string)
             (dispatched_input, tokens_per_expert) = self.token_dispatcher.token_permutation(
                 hidden_states, probs, indices
             )
+            print(dispatched_input.shape)
+            string = f"dispatched_input_{torch.distributed.get_rank()}.pt"
+            #torch.save(dispatched_input, string)
             expert_output, mlp_bias = self.experts(dispatched_input, tokens_per_expert)
+            print(expert_output.shape)
+            string = f"expert_output_{torch.distributed.get_rank()}.pt"
+            #torch.save(expert_output, string)
+            #assert 1==-1
+            #expert_output = torch.load(string)
             output, mlp_bias = self.token_dispatcher.token_unpermutation(expert_output, mlp_bias)
             return output, mlp_bias
 
@@ -119,3 +134,4 @@ class MoELayer(BaseMoELayer):
             output, mlp_bias = custom_forward(hidden_states)
 
         return output, mlp_bias
+

@@ -229,9 +229,6 @@ class TransformerConfig(ModelParallelConfig):
     moe_router_topk: int = 2
     """Number of experts to route to for each token."""
 
-    moe_router_pre_softmax: bool = False
-    """Enable pre-softmax routing for MoE, which means the top-k selection is before the softmax. By default, top-k is done after the softmax."""
-
     moe_grouped_gemm: bool = False
     """When there are multiple experts per rank, compress multiple local (potentially small) gemms
     in a single kernel launch to improve the utilization and performance by leveraging the Grouped
@@ -284,8 +281,8 @@ class TransformerConfig(ModelParallelConfig):
     """When set to true, TransformerLayer blocks are wrapped with CUDA graph."""
 
     def __post_init__(self):
-        """Python dataclass method that is used to modify attributes after initialization.
-        See https://docs.python.org/3/library/dataclasses.html#post-init-processing for more details.
+        """ Python dataclass method that is used to modify attributes after initialization.
+            See https://docs.python.org/3/library/dataclasses.html#post-init-processing for more details.
         """
         super().__post_init__()
         if self.fp16 and self.bf16:
@@ -324,7 +321,7 @@ class TransformerConfig(ModelParallelConfig):
             raise ValueError(f'num_moe_experts must be non-negative.')
 
         if self.moe_expert_capacity_factor is not None:
-            if self.moe_token_dispatcher_type != "alltoall":
+            if self.moe_token_dispatcher_type != "alltoall" and self.moe_token_dispatcher_type != "lshalltoall":
                 raise ValueError(
                     f'moe_expert_capacity_factor only works with alltoall token dispatcher'
                 )
@@ -438,3 +435,4 @@ class TransformerConfig(ModelParallelConfig):
                 raise ValueError(
                     f'ffn_hidden_size: {self.ffn_hidden_size} must be divisible by extended_tp_size {extended_tp_size}'
                 )
+
